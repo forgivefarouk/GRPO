@@ -13,8 +13,21 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 
 load_dotenv()
+os.environ['WANDB_API_KEY'] = os.getenv('WANDB_API_KEY')
+os.environ["WANDB_PROJECT"] = "GRPO"
 
 
+SYSTEM_PROMPT="""
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+"""
+
+# Set random seed for reproducibility
 def set_random_seed(seed : int= 42):
     """
     Set random seed for reproducibility
@@ -34,24 +47,9 @@ def set_random_seed(seed : int= 42):
         torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    os.environ['PYTHONHASHSEED'] = str(seed)
-
-set_random_seed(42)
-os.environ['WANDB_API_KEY'] = os.getenv('WANDB_API_KEY')
-os.environ["WANDB_PROJECT"] = "GRPO"
 
 
-SYSTEM_PROMPT="""
-Respond in the following format:
-<reasoning>
-...
-</reasoning>
-<answer>
-...
-</answer>
-"""
-
-
+# Extract answer from model output
 def extract_answer_from_model_output(output):
     """
     Extract answer from model output
@@ -73,6 +71,8 @@ def extract_answer_from_model_output(output):
     
     return None if answer=="..." else answer
 
+
+# Extract the final answer from GSM8K dataset
 def extract_answer_from_dataset_output(text):
     """
    Extracts the answer from the GSM8K dataset examples.
@@ -97,6 +97,63 @@ def extract_answer_from_dataset_output(text):
     
 
     
+def prepare_dataset(split="train"):
+
+    """
+    Prepare the GSM8K dataset for training and evaluation.
+
+    Args:
+        split (str): The dataset split to use, one of "train", "validation", or "test".
+
+    Returns:
+        List[Dict[str, str]]: The prepared dataset as a list of dictionaries.
+
+    Explanation:
+        1. Loads the GSM8K dataset using the Hugging Face datasets library.
+        2. Selects the specified split (train, validation, or test).
+        3. Converts the dataset to a string using build_prompt().
+        4. Extracts the answer part from the dataset examples.
+        5. Returns the prepared dataset.
+    """
     
+    dataset = load_dataset('openai/gsm8k', 'main')[split]
+    formated_data = []
+    for example in dataset:
+        prompt_str = build_prompt([
+            {
+                "role":"system","content":SYSTEM_PROMPT,
+                "role":"user","content":example["question"]
+            }])
+        formated_example = {
+            "prompt":prompt_str,
+            "answer":extract_answer_from_dataset_output(example["answer"])
+            
+        }
+        formated_data.append(formated_example)
+
+    return formated_data
+
+
+def build_prompt(messages):
+   """
+   Build a single prompt string from a list of messages.
+
+   Args:
+       messages (list): A list of message dictionaries, each with 'role' and 'content' keys.
+
+   Returns:
+       str: A concatenated string of all message contents.
+
+   Explanation:
+       1. Takes a list of message dictionaries in the typical chat format.
+       2. Extracts the 'content' field from each message and strips whitespace.
+       3. Joins all content strings with newlines to create a single prompt.
+       4. This preserves the training format while converting from structured messages to a string.
+   """
+   return "\n".join([msg["content"].strip() for msg in messages])
+
+
+
+
 
     
